@@ -14,7 +14,16 @@ using UnityEngine.UI;
 /// in the inspector — this script creates the Canvas + DisplayXRWindowSpaceUI
 /// + all controls programmatically). Reference a DisplayXRDisplay rig in the
 /// inspector or leave empty to auto-find.
+///
+/// [ExecuteAlways] is intentional: DisplayXR's standalone preview window
+/// starts the runtime session WITHOUT entering Play Mode (it's an
+/// EditorWindow + standalone OpenXR session). So MonoBehaviour.Start /
+/// OnEnable normally wouldn't fire and the panel wouldn't be built. With
+/// [ExecuteAlways] the panel is created on first scene load too, so
+/// "Window → DisplayXR → Preview Window → Start" is enough — no Play
+/// button required.
 /// </summary>
+[ExecuteAlways]
 public class DisplayXRTuningUI : MonoBehaviour
 {
     [Header("Target rig")]
@@ -72,14 +81,24 @@ public class DisplayXRTuningUI : MonoBehaviour
     private bool[] m_ModeIs3D;
     private int m_CurrentModeArrayIdx = -1;
 
-    void Start()
+    void OnEnable()
     {
-        if (displayRig == null) displayRig = Object.FindFirstObjectByType<DisplayXRDisplay>();
+        if (displayRig == null) displayRig = Object.FindAnyObjectByType<DisplayXRDisplay>();
 
         // Pick a built-in font that ships with Unity. LegacyRuntime.ttf is
         // the modern default; Arial fallback for older Unity versions.
         m_Font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (m_Font == null) m_Font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        // Idempotent: with [ExecuteAlways] this runs on every domain reload.
+        // If we already built the panel last reload, drop it and build fresh —
+        // simpler than trying to repair half-serialized component refs.
+        var existing = transform.Find("DisplayXR_Tuning_Canvas");
+        if (existing != null)
+        {
+            if (Application.isPlaying) Destroy(existing.gameObject);
+            else DestroyImmediate(existing.gameObject);
+        }
 
         BuildPanel();
     }
