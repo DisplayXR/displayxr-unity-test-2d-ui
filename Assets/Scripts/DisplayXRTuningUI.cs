@@ -510,7 +510,11 @@ public class DisplayXRTuningUI : MonoBehaviour
 
         var handleGO = MakeUIObject("Handle", handleAreaGO.transform);
         var handleRT = handleGO.GetComponent<RectTransform>();
-        handleRT.sizeDelta = new Vector2(kHandleSize, kHandleSize);
+        // Slider.LeftToRight sets handle anchorMin.y=0 / anchorMax.y=1, so
+        // handle height = parentHeight + sizeDelta.y. Slide area parent is
+        // already kHandleSize tall, so sizeDelta.y must be 0 (not kHandleSize)
+        // — otherwise the handle renders 2x its intended height.
+        handleRT.sizeDelta = new Vector2(kHandleSize, 0);
         var handleImg = handleGO.AddComponent<Image>();
         handleImg.color = Color.white;
         handleImg.sprite = GetCircleSprite();
