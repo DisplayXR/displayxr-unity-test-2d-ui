@@ -88,14 +88,20 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
             return;
         }
 
-        // ---- 3. Map to canvas-pixel coords ----
+        // ---- 3. Map to RT-pixel coords (= screen coords for OverlayCamera) ----
         float panelFracX = (windowFrac.x - m_Wsui.positionX) / m_Wsui.width;
         float panelFracY = (windowFrac.y - m_Wsui.positionY) / m_Wsui.height;
-        // PointerEventData.position uses screen-pixel coords with bottom-left
-        // origin (Unity convention). We flip Y because windowFrac was top-left.
+        // The wsui's OverlayCamera is rotated with up = Vector3.down so the
+        // RT comes out Y-flipped (matching the runtime's top-left texture
+        // origin). When that camera serves as Canvas.worldCamera,
+        // ScreenPointToRay's Y is inverted by the same flip — so a panelFracY
+        // of 0 (top of layer) needs screenY = 0, and panelFracY of 1 (bottom)
+        // needs screenY = resolution.y. No additional flip in the router.
         var canvasPos = new Vector2(
             panelFracX * m_Wsui.resolution.x,
-            (1f - panelFracY) * m_Wsui.resolution.y);
+            panelFracY * m_Wsui.resolution.y);
+
+        var eventCam = m_Wsui.GetComponent<Canvas>()?.worldCamera;
 
         // ---- 4. Synthesize PointerEventData and dispatch ----
         m_PointerData.Reset();
@@ -103,6 +109,8 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         m_PointerData.delta = canvasPos - m_LastCanvasPos;
         m_PointerData.scrollDelta = Vector2.zero;
         m_PointerData.button = PointerEventData.InputButton.Left;
+        m_PointerData.pressEventCamera = eventCam;
+        m_PointerData.enterEventCamera = eventCam;
         m_PointerData.pressPosition = m_LeftDown ? m_PointerData.pressPosition : canvasPos;
 
         var hits = new List<RaycastResult>();
