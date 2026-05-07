@@ -57,6 +57,10 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         m_PointerData = new PointerEventData(m_EventSystem);
     }
 
+    [Tooltip("Verbose Debug.Log of cursor → wsui-rect → canvas-pixel → hit chain. Toggle off when shipping.")]
+    public bool debugLog = true;
+    private float m_NextLogT;
+
     void Update()
     {
         // Lazy-bind to the wsui that DisplayXRTuningUI builds in OnEnable.
@@ -72,18 +76,24 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
                 m_Raycaster = m_Wsui.gameObject.AddComponent<GraphicRaycaster>();
         }
 
+        bool log = debugLog && Time.unscaledTime >= m_NextLogT;
+        if (log) m_NextLogT = Time.unscaledTime + 0.25f;
+
         // ---- 1. Read cursor in fractional window-coords ----
         if (!TryGetWindowMouseFractional(out Vector2 windowFrac))
         {
+            if (log) Debug.Log("[wsui-router] no cursor (preview offscreen?)");
             ReleaseIfDown();
             return;
         }
+        if (log) Debug.Log($"[wsui-router] windowFrac=({windowFrac.x:F3}, {windowFrac.y:F3})  wsuiRect=({m_Wsui.positionX:F2},{m_Wsui.positionY:F2},{m_Wsui.width:F2},{m_Wsui.height:F2})");
 
         // ---- 2. Hit-test the wsui layer rect ----
         // wsui.position[XY] is also fractional, top-left origin → straightforward rect test.
         if (windowFrac.x < m_Wsui.positionX || windowFrac.x > m_Wsui.positionX + m_Wsui.width ||
             windowFrac.y < m_Wsui.positionY || windowFrac.y > m_Wsui.positionY + m_Wsui.height)
         {
+            if (log) Debug.Log("[wsui-router] outside wsui rect");
             ReleaseIfDown();
             return;
         }
@@ -112,6 +122,11 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         var hits = new List<RaycastResult>();
         m_Raycaster.Raycast(m_PointerData, hits);
         var hovered = hits.Count > 0 ? hits[0].gameObject : null;
+        if (log)
+        {
+            var cam = m_Wsui.GetComponent<Canvas>().worldCamera;
+            Debug.Log($"[wsui-router] canvasPos=({canvasPos.x:F0}, {canvasPos.y:F0})  worldCamera={(cam == null ? "null" : cam.name)}  hits={hits.Count}  hovered={(hovered == null ? "null" : hovered.name)}  leftDown={IsLeftDown()}");
+        }
         // PointerEventData.pressEventCamera / enterEventCamera are read-only
         // in Unity 6's UGUI — they're derived from
         // pointerCurrentRaycast.module / pointerPressRaycast.module. Wire the
