@@ -4,6 +4,7 @@
 using System.Runtime.InteropServices;
 using DisplayXR;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -258,7 +259,6 @@ public class DisplayXRTuningUI : MonoBehaviour
     }
 
     private bool m_PrevVPressed;
-    private bool m_PrevTabPressed;
     private bool m_UIVisible = true;
     private GameObject m_CanvasGO;
 
@@ -287,17 +287,20 @@ public class DisplayXRTuningUI : MonoBehaviour
         if (vNow && !m_PrevVPressed) CycleRenderMode();
         m_PrevVPressed = vNow;
 
-        // Shift+Tab toggles UI visibility. Plain Tab is already used by the
-        // plugin's DisplayXRRigManager.CycleNext (camera cycling) when Unity
-        // has focus — Shift gates this handler so the two don't fight.
-        bool tabNow = DisplayXRPreviewInput.IsKeyPressed('\t');
-        bool shiftNow = DisplayXRPreviewInput.IsKeyPressed(0x10); // Shift bitmask code
-        if (tabNow && !m_PrevTabPressed && shiftNow && m_CanvasGO != null)
+        // Shift+Tab toggles UI visibility. Read directly from Unity's new
+        // Input System — this only fires when Unity's editor or game view
+        // has focus, which is the typical case here (the user has clicked
+        // back into the editor before pressing the shortcut). Plain Tab is
+        // bound by the plugin's DisplayXRRigManager.CycleNext for camera
+        // cycling, so Shift is the gate that keeps the two non-conflicting.
+        var kb = Keyboard.current;
+        if (kb != null && m_CanvasGO != null &&
+            kb.tabKey.wasPressedThisFrame &&
+            (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed))
         {
             m_UIVisible = !m_UIVisible;
             m_CanvasGO.SetActive(m_UIVisible);
         }
-        m_PrevTabPressed = tabNow;
     }
 
     void TryEnumerateModes()
