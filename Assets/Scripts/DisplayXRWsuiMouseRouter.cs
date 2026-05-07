@@ -75,10 +75,6 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         m_PointerData = new PointerEventData(m_EventSystem);
     }
 
-    [Tooltip("Verbose Debug.Log of cursor → wsui-rect → canvas-pixel → hit chain. Toggle off when shipping.")]
-    public bool debugLog = true;
-    private float m_NextLogT;
-
     void Update()
     {
         // Lazy-bind to the wsui that DisplayXRTuningUI builds in OnEnable.
@@ -99,25 +95,19 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
             m_Raycaster.ignoreReversedGraphics = false;
         }
 
-        bool log = debugLog && Time.unscaledTime >= m_NextLogT;
-        if (log) m_NextLogT = Time.unscaledTime + 0.25f;
-
         // ---- 1. Read cursor in fractional window-coords ----
         if (!TryGetWindowMouseFractional(out Vector2 windowFrac))
         {
-            if (log) Debug.Log("[wsui-router] no cursor (preview offscreen?)");
             DisplayXR.DisplayXRWindowSpaceUI.IsCursorOverInteractive = false;
             ReleaseIfDown();
             return;
         }
-        if (log) Debug.Log($"[wsui-router] windowFrac=({windowFrac.x:F3}, {windowFrac.y:F3})  wsuiRect=({m_Wsui.positionX:F2},{m_Wsui.positionY:F2},{m_Wsui.width:F2},{m_Wsui.height:F2})");
 
         // ---- 2. Hit-test the wsui layer rect ----
         // wsui.position[XY] is also fractional, top-left origin → straightforward rect test.
         if (windowFrac.x < m_Wsui.positionX || windowFrac.x > m_Wsui.positionX + m_Wsui.width ||
             windowFrac.y < m_Wsui.positionY || windowFrac.y > m_Wsui.positionY + m_Wsui.height)
         {
-            if (log) Debug.Log("[wsui-router] outside wsui rect");
             DisplayXR.DisplayXRWindowSpaceUI.IsCursorOverInteractive = m_PressTarget != null;
             ReleaseIfDown();
             return;
@@ -152,44 +142,6 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         // happen to hover empty space inside the panel — that matches what
         // the user expects (cursor is "in the UI region").
         DisplayXR.DisplayXRWindowSpaceUI.IsCursorOverInteractive = true;
-        if (log)
-        {
-            var canvas = m_Wsui.GetComponent<Canvas>();
-            var cam = canvas.worldCamera;
-            int gfxCount = canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(true).Length;
-            int raycastTargets = 0;
-            foreach (var g in canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
-                if (g.raycastTarget) raycastTargets++;
-            string camRect = cam == null ? "?" : cam.pixelRect.ToString();
-            // Sanity: try raycast at dead-center.
-            var savedPos = m_PointerData.position;
-            var centerScreen = new Vector2(m_Wsui.resolution.x / 2f, m_Wsui.resolution.y / 2f);
-            m_PointerData.position = centerScreen;
-            var centerHits = new List<RaycastResult>();
-            m_Raycaster.Raycast(m_PointerData, centerHits);
-            m_PointerData.position = savedPos;
-
-            // Manually replicate the rect-contains test for each graphic at center.
-            // Tells us whether ScreenPointToWorldPointInRectangle is failing or
-            // the local InverseTransformPoint check is failing.
-            string canvasInfo = "?";
-            var canvasRT = canvas.GetComponent<RectTransform>();
-            if (canvasRT != null) canvasInfo = $"rect={canvasRT.rect} pos={canvasRT.position} scale={canvasRT.localScale}";
-            string firstFew = "";
-            int probed = 0;
-            foreach (var g in canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(false))
-            {
-                if (!g.raycastTarget) continue;
-                if (probed++ >= 3) break;
-                var grt = g.rectTransform;
-                bool sptw = UnityEngine.RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                    grt, centerScreen, cam, out Vector3 wp);
-                bool contains = sptw && grt.rect.Contains((Vector2)grt.InverseTransformPoint(wp));
-                firstFew += $"\n  '{g.name}' rect={grt.rect} sptw={sptw} wp={wp} contains={contains}";
-            }
-
-            Debug.Log($"[wsui-router] canvasPos=({canvasPos.x:F0}, {canvasPos.y:F0})  worldCamera={(cam == null ? "null" : cam.name)} pixelRect={camRect}  gfx={gfxCount} raycastTargets={raycastTargets}  hits={hits.Count}  hovered={(hovered == null ? "null" : hovered.name)}  centerHits={centerHits.Count}\n  canvas: {canvasInfo}{firstFew}");
-        }
         // PointerEventData.pressEventCamera / enterEventCamera are read-only
         // in Unity 6's UGUI — they're derived from
         // pointerCurrentRaycast.module / pointerPressRaycast.module. Wire the
@@ -201,8 +153,6 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
             : default(RaycastResult);
 
         bool nowDown = IsLeftDown();
-        if (nowDown != m_LeftDown)
-            Debug.Log($"[wsui-router] click edge: leftDown {m_LeftDown}->{nowDown} hovered={(hovered == null ? "null" : hovered.name)} canvasPos=({canvasPos.x:F0},{canvasPos.y:F0})");
         if (!m_LeftDown && nowDown && hovered != null)
         {
             // Snapshot the press raycast so PointerEventData.pressEventCamera
@@ -238,9 +188,7 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
             {
                 ExecuteEvents.Execute(clickHandler, m_PointerData,
                     ExecuteEvents.pointerClickHandler);
-                if (log) Debug.Log($"[wsui-router] click fired on {clickHandler.name}");
             }
-            else if (log) Debug.Log($"[wsui-router] click MISSED: pressTarget={(m_PressTarget == null ? "null" : m_PressTarget.name)} hovered={(hovered == null ? "null" : hovered.name)} clickHandler={(clickHandler == null ? "null" : clickHandler.name)}");
             m_PressTarget = null;
         }
 

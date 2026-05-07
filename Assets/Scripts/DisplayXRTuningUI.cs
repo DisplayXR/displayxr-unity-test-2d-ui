@@ -381,14 +381,11 @@ public class DisplayXRTuningUI : MonoBehaviour
 
     void CycleRenderMode()
     {
-        Debug.Log($"[TuningUI] CycleRenderMode invoked on '{name}'. m_ModeIndices len={(m_ModeIndices == null ? -1 : m_ModeIndices.Length)} curIdx={m_CurrentModeArrayIdx} indices=[{(m_ModeIndices == null ? "null" : string.Join(",", m_ModeIndices))}]");
         if (m_ModeIndices == null || m_ModeIndices.Length == 0) return;
         m_CurrentModeArrayIdx = (m_CurrentModeArrayIdx + 1) % m_ModeIndices.Length;
         try
         {
-            uint mode = m_ModeIndices[m_CurrentModeArrayIdx];
-            Debug.Log($"[TuningUI] Requesting rendering mode index={mode} (array slot {m_CurrentModeArrayIdx})");
-            displayxr_standalone_request_rendering_mode(mode);
+            displayxr_standalone_request_rendering_mode(m_ModeIndices[m_CurrentModeArrayIdx]);
         }
         catch (System.EntryPointNotFoundException) { }
         UpdateModeLabel();
