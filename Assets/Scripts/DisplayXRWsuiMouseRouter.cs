@@ -124,8 +124,21 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
         var hovered = hits.Count > 0 ? hits[0].gameObject : null;
         if (log)
         {
-            var cam = m_Wsui.GetComponent<Canvas>().worldCamera;
-            Debug.Log($"[wsui-router] canvasPos=({canvasPos.x:F0}, {canvasPos.y:F0})  worldCamera={(cam == null ? "null" : cam.name)}  hits={hits.Count}  hovered={(hovered == null ? "null" : hovered.name)}  leftDown={IsLeftDown()}");
+            var canvas = m_Wsui.GetComponent<Canvas>();
+            var cam = canvas.worldCamera;
+            int gfxCount = canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(true).Length;
+            int raycastTargets = 0;
+            foreach (var g in canvas.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+                if (g.raycastTarget) raycastTargets++;
+            string camRect = cam == null ? "?" : cam.pixelRect.ToString();
+            // Sanity: try raycast at dead-center.
+            var savedPos = m_PointerData.position;
+            m_PointerData.position = new Vector2(m_Wsui.resolution.x / 2f, m_Wsui.resolution.y / 2f);
+            var centerHits = new List<RaycastResult>();
+            m_Raycaster.Raycast(m_PointerData, centerHits);
+            m_PointerData.position = savedPos;
+
+            Debug.Log($"[wsui-router] canvasPos=({canvasPos.x:F0}, {canvasPos.y:F0})  worldCamera={(cam == null ? "null" : cam.name)} pixelRect={camRect}  gfx={gfxCount} raycastTargets={raycastTargets}  hits={hits.Count}  hovered={(hovered == null ? "null" : hovered.name)}  centerHits={centerHits.Count} centerHover={(centerHits.Count > 0 ? centerHits[0].gameObject.name : "null")}");
         }
         // PointerEventData.pressEventCamera / enterEventCamera are read-only
         // in Unity 6's UGUI — they're derived from
