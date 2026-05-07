@@ -31,20 +31,20 @@ public class DisplayXRTuningUI : MonoBehaviour
     public DisplayXRDisplay displayRig;
 
     [Header("Layer placement (fractional window coords)")]
-    [Range(0f, 1f)] public float panelX = 0.02f;
+    [Range(0f, 1f)] public float panelX = 0f;
     [Range(0f, 1f)] public float panelY = 0.65f;
     [Range(0f, 1f)] public float panelWidth = 0.20f;
     [Range(0f, 1f)] public float panelHeight = 0.32f;
     [Range(-0.05f, 0.05f)] public float disparity;
 
-    [Header("Tunable ranges")]
-    public float ipdMin = 0.0f;
-    public float ipdMax = 1.0f;
-    public float ipdDefault = 1.0f;
-    [Tooltip("Multiplier over the rig's initial virtualDisplayHeight (set in editor).")]
-    public float scaleMin = 0.5f;
-    public float scaleMax = 1.5f;
-    public float scaleDefault = 1.0f;
+    // Slider ranges/defaults are constants so scene-serialized values from
+    // earlier versions can't override the canonical spec.
+    private const float kIpdMin = 0.0f;
+    private const float kIpdMax = 1.0f;
+    private const float kIpdDefault = 1.0f;
+    private const float kScaleMin = 0.5f;
+    private const float kScaleMax = 1.5f;
+    private const float kScaleDefault = 1.0f;
 
     private float m_InitialVHeight;
 
@@ -174,8 +174,8 @@ public class DisplayXRTuningUI : MonoBehaviour
 
         // Use a vertical layout to stack the rows nicely.
         var layout = panelGO.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(40, 32, 32, 32);
-        layout.spacing = 24;
+        layout.padding = new RectOffset(60, 50, 50, 50);
+        layout.spacing = 40;
         layout.childAlignment = TextAnchor.UpperLeft;
         layout.childControlWidth = true;
         layout.childControlHeight = false;
@@ -183,15 +183,15 @@ public class DisplayXRTuningUI : MonoBehaviour
         layout.childForceExpandHeight = false;
 
         // ---- title ----
-        var title = MakeText(panelGO.transform, "Title", "DisplayXR Tuning", 36, FontStyle.Bold);
+        var title = MakeText(panelGO.transform, "Title", "DisplayXR Tuning", 72, FontStyle.Bold);
         title.color = Color.white;
         var titleLE = title.gameObject.AddComponent<LayoutElement>();
-        titleLE.preferredHeight = 50;
+        titleLE.preferredHeight = 100;
 
         // ---- IPD ----
-        if (displayRig != null) displayRig.ipdFactor = ipdDefault;
+        if (displayRig != null) displayRig.ipdFactor = kIpdDefault;
         BuildSliderRow(panelGO.transform, "IPD",
-            ipdMin, ipdMax, ipdDefault,
+            kIpdMin, kIpdMax, kIpdDefault,
             v =>
             {
                 if (displayRig != null) displayRig.ipdFactor = v;
@@ -200,9 +200,9 @@ public class DisplayXRTuningUI : MonoBehaviour
             out m_IpdSlider, out m_IpdValueText);
 
         // ---- Scale (multiplier over initial vHeight) ----
-        if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight * scaleDefault;
+        if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight * kScaleDefault;
         BuildSliderRow(panelGO.transform, "Scale",
-            scaleMin, scaleMax, scaleDefault,
+            kScaleMin, kScaleMax, kScaleDefault,
             v =>
             {
                 if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight * v;
@@ -225,9 +225,9 @@ public class DisplayXRTuningUI : MonoBehaviour
         m_ModeButton.targetGraphic = btnImg;
         m_ModeButton.onClick.AddListener(CycleRenderMode);
         var btnLE = btnGO.AddComponent<LayoutElement>();
-        btnLE.preferredHeight = 70;
+        btnLE.preferredHeight = 140;
 
-        m_ModeButtonLabel = MakeText(btnGO.transform, "Label", "Render Mode", 28, FontStyle.Bold);
+        m_ModeButtonLabel = MakeText(btnGO.transform, "Label", "Render Mode", 56, FontStyle.Bold);
         m_ModeButtonLabel.color = Color.white;
         m_ModeButtonLabel.alignment = TextAnchor.MiddleCenter;
         var labelRT = m_ModeButtonLabel.GetComponent<RectTransform>();
@@ -246,6 +246,8 @@ public class DisplayXRTuningUI : MonoBehaviour
         TryEnumerateModes();
     }
 
+    private bool m_PrevVPressed;
+
     void Update()
     {
         // Push wsui placement changes from inspector edits.
@@ -261,6 +263,15 @@ public class DisplayXRTuningUI : MonoBehaviour
 
         // Mode list may not be ready until the standalone session has begun.
         if (m_ModeNames == null) TryEnumerateModes();
+
+        // V key cycles render modes — same action as the on-screen button.
+        // Polled via DisplayXRPreviewInput.IsKeyPressed which reads OS hardware
+        // state, so it works while the standalone preview NSWindow has focus
+        // (Unity's Input System only fires when Unity's editor or game view
+        // is focused). Edge-detected here so a held V doesn't spam-cycle.
+        bool vNow = DisplayXRPreviewInput.IsKeyPressed('V');
+        if (vNow && !m_PrevVPressed) CycleRenderMode();
+        m_PrevVPressed = vNow;
     }
 
     void TryEnumerateModes()
@@ -397,9 +408,9 @@ public class DisplayXRTuningUI : MonoBehaviour
     {
         var rowGO = MakeUIObject(label + "Row", parent);
         var rowLE = rowGO.AddComponent<LayoutElement>();
-        rowLE.preferredHeight = 80;
+        rowLE.preferredHeight = 160;
 
-        var labelText = MakeText(rowGO.transform, "Label", label, 22, FontStyle.Normal);
+        var labelText = MakeText(rowGO.transform, "Label", label, 44, FontStyle.Normal);
         labelText.color = new Color(0.75f, 0.78f, 0.85f, 1f);
         var labelRT = labelText.GetComponent<RectTransform>();
         labelRT.anchorMin = new Vector2(0, 0.55f);
@@ -407,7 +418,7 @@ public class DisplayXRTuningUI : MonoBehaviour
         labelRT.offsetMin = Vector2.zero;
         labelRT.offsetMax = Vector2.zero;
 
-        valueText = MakeText(rowGO.transform, "Value", initial.ToString("0.00"), 22, FontStyle.Bold);
+        valueText = MakeText(rowGO.transform, "Value", initial.ToString("0.00"), 44, FontStyle.Bold);
         valueText.alignment = TextAnchor.MiddleRight;
         var valueRT = valueText.GetComponent<RectTransform>();
         valueRT.anchorMin = new Vector2(0.7f, 0.55f);
@@ -428,7 +439,7 @@ public class DisplayXRTuningUI : MonoBehaviour
         bgRT.anchorMin = new Vector2(0, 0.5f);
         bgRT.anchorMax = new Vector2(1, 0.5f);
         bgRT.pivot = new Vector2(0.5f, 0.5f);
-        bgRT.sizeDelta = new Vector2(0, 6);
+        bgRT.sizeDelta = new Vector2(0, 12);
         bgGO.AddComponent<Image>().color = new Color(0.18f, 0.20f, 0.25f, 1f);
 
         var fillAreaGO = MakeUIObject("Fill Area", sliderGO.transform);
@@ -436,8 +447,8 @@ public class DisplayXRTuningUI : MonoBehaviour
         fillAreaRT.anchorMin = new Vector2(0, 0.5f);
         fillAreaRT.anchorMax = new Vector2(1, 0.5f);
         fillAreaRT.pivot = new Vector2(0.5f, 0.5f);
-        fillAreaRT.offsetMin = new Vector2(0, -3);
-        fillAreaRT.offsetMax = new Vector2(0, 3);
+        fillAreaRT.offsetMin = new Vector2(0, -6);
+        fillAreaRT.offsetMax = new Vector2(0, 6);
 
         var fillGO = MakeUIObject("Fill", fillAreaGO.transform);
         var fillRT = fillGO.GetComponent<RectTransform>();
@@ -456,7 +467,7 @@ public class DisplayXRTuningUI : MonoBehaviour
 
         var handleGO = MakeUIObject("Handle", handleAreaGO.transform);
         var handleRT = handleGO.GetComponent<RectTransform>();
-        handleRT.sizeDelta = new Vector2(20, 20);
+        handleRT.sizeDelta = new Vector2(40, 40);
         var handleImg = handleGO.AddComponent<Image>();
         handleImg.color = Color.white;
 
