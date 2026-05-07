@@ -76,6 +76,12 @@ public class DisplayXRTuningUI : MonoBehaviour
     [DllImport(kNativeLib, CallingConvention = CallingConvention.Cdecl)]
     private static extern int displayxr_standalone_request_rendering_mode(uint modeIndex);
 
+    [DllImport(kNativeLib, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int displayxr_standalone_get_rendering_mode_name(
+        uint arraySlot,
+        [MarshalAs(UnmanagedType.LPArray)] byte[] buffer,
+        uint bufferSize);
+
     private uint[] m_ModeIndices;
     private string[] m_ModeNames;
     private bool[] m_ModeIs3D;
@@ -270,23 +276,41 @@ public class DisplayXRTuningUI : MonoBehaviour
             m_ModeIndices = new uint[count];
             m_ModeNames = new string[count];
             m_ModeIs3D = new bool[count];
+            byte[] nameBuf = new byte[256];
             for (int i = 0; i < count; i++)
             {
                 m_ModeIndices[i] = indices[i];
                 m_ModeIs3D[i] = hw3d[i] != 0;
-                // We don't have the real mode-name strings without a fixed
-                // marshalled buffer; synthesize a friendly label. Mode 0 is
-                // typically 2D, others are 3D variants.
-                m_ModeNames[i] = SynthesizeModeName(indices[i], hw3d[i] != 0,
-                    tileC[i], tileR[i], viewCounts[i]);
+
+                // Fetch the runtime-reported display name for this slot.
+                // Falls back to a synthesized label if the runtime returns
+                // empty (older runtime, or modes without a name string).
+                string name = null;
+                System.Array.Clear(nameBuf, 0, nameBuf.Length);
+                if (displayxr_standalone_get_rendering_mode_name((uint)i, nameBuf, (uint)nameBuf.Length) != 0)
+                {
+                    int len = 0;
+                    while (len < nameBuf.Length && nameBuf[len] != 0) len++;
+                    if (len > 0) name = System.Text.Encoding.UTF8.GetString(nameBuf, 0, len);
+                }
+                if (string.IsNullOrEmpty(name))
+                    name = SynthesizeModeName(indices[i], hw3d[i] != 0,
+                        tileC[i], tileR[i], viewCounts[i]);
+                m_ModeNames[i] = name;
             }
 
-            // Default selection: first hw3d mode if any, else first.
+            // Default selection: first hw3d mode if any, else first. The
+            // runtime starts in its own default (typically the first mode it
+            // enumerates — often 2D), so push a request to align it with our
+            // displayed selection. Otherwise the label says "3D Side-by-Side"
+            // while the screen still shows 2D.
             m_CurrentModeArrayIdx = 0;
             for (int i = 0; i < count; i++)
             {
                 if (m_ModeIs3D[i]) { m_CurrentModeArrayIdx = i; break; }
             }
+            try { displayxr_standalone_request_rendering_mode(m_ModeIndices[m_CurrentModeArrayIdx]); }
+            catch (System.EntryPointNotFoundException) { }
             UpdateModeLabel();
         }
         catch (System.EntryPointNotFoundException) { /* old plugin — ignore */ }
@@ -304,11 +328,14 @@ public class DisplayXRTuningUI : MonoBehaviour
 
     void CycleRenderMode()
     {
+        Debug.Log($"[TuningUI] CycleRenderMode invoked on '{name}'. m_ModeIndices len={(m_ModeIndices == null ? -1 : m_ModeIndices.Length)} curIdx={m_CurrentModeArrayIdx} indices=[{(m_ModeIndices == null ? "null" : string.Join(",", m_ModeIndices))}]");
         if (m_ModeIndices == null || m_ModeIndices.Length == 0) return;
         m_CurrentModeArrayIdx = (m_CurrentModeArrayIdx + 1) % m_ModeIndices.Length;
         try
         {
-            displayxr_standalone_request_rendering_mode(m_ModeIndices[m_CurrentModeArrayIdx]);
+            uint mode = m_ModeIndices[m_CurrentModeArrayIdx];
+            Debug.Log($"[TuningUI] Requesting rendering mode index={mode} (array slot {m_CurrentModeArrayIdx})");
+            displayxr_standalone_request_rendering_mode(mode);
         }
         catch (System.EntryPointNotFoundException) { }
         UpdateModeLabel();
