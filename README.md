@@ -1,6 +1,24 @@
-# DisplayXR Unity Test Project
+# DisplayXR Unity Test Project — 2D UI Overlay Variant
 
-A minimal Unity test project for the [DisplayXR Unity plugin](https://github.com/DisplayXR/displayxr-unity). Use this project to validate the plugin against new releases, test scene setups, and try out the spatial display rendering on a tracked 3D display.
+A URP test project that exercises the **window-space 2D UI overlay** feature
+of the [DisplayXR Unity plugin](https://github.com/DisplayXR/displayxr-unity)
+(`DisplayXRWindowSpaceUI`, plumbed through `XrCompositionLayerWindowSpaceEXT`
+in the OpenXR runtime).
+
+The scene renders a textured cube on a tracked 3D display and overlays a
+runtime-built UI panel (IPD slider, virtual-display-height slider,
+render-mode cycle button) submitted as a window-space composition layer.
+
+**Render pipeline:** Universal (URP).
+
+**Sibling test projects** — each repo focuses on one feature so a regression
+in one demo doesn't mask the others:
+
+| Repo | What it demonstrates | Pipeline |
+|---|---|---|
+| [displayxr-unity-test](https://github.com/DisplayXR/displayxr-unity-test) | Display-centric vs camera-centric rigs, live rig switching | BiRP |
+| [displayxr-unity-test-2d-ui](https://github.com/DisplayXR/displayxr-unity-test-2d-ui) (you are here) | `XrCompositionLayerWindowSpaceEXT` 2D UI overlay (`DisplayXRWindowSpaceUI`) | URP |
+| [displayxr-unity-test-transparent](https://github.com/DisplayXR/displayxr-unity-test-transparent) | Chroma-key transparent overlay (`DisplayXRTransparentOverlay`, Windows-only) | BiRP |
 
 ## Requirements
 
@@ -12,10 +30,11 @@ A minimal Unity test project for the [DisplayXR Unity plugin](https://github.com
 
 1. Clone this repo:
    ```bash
-   git clone https://github.com/DisplayXR/displayxr-unity-test.git
+   git clone https://github.com/DisplayXR/displayxr-unity-test-2d-ui.git
    ```
 2. Open the project in Unity Hub (`File → Open Project`)
 3. Unity will fetch dependencies — this may take a few minutes on first open
+4. Open `Assets/CubeTest.unity` to load the test scene
 
 ### URP setup
 
@@ -34,30 +53,39 @@ upgrade materials:
 3. Tick *Material and Material Reference Upgrade*, then *Initialize Converters*
    and *Convert Assets*
 
-4. Open `Assets/CubeTest.unity` to load the test scene.
-
 ## Plugin Reference
 
 The project depends on the DisplayXR Unity plugin via Unity Package Manager. The dependency is declared in `Packages/manifest.json`:
 
 ```json
-"com.displayxr.unity": "https://github.com/DisplayXR/displayxr-unity.git#upm/v1.2.7"
+"com.displayxr.unity": "https://github.com/DisplayXR/displayxr-unity.git#upm/v1.2.9"
 ```
 
-To test against a different plugin version, edit the URL fragment (`#upm/v1.2.7`) to point at the desired tag, then run `Window → Package Manager → Refresh`.
+To test against a different plugin version, edit the URL fragment (`#upm/v1.2.9`) to point at the desired tag, then run `Window → Package Manager → Refresh`.
 
 To test against a local development build of the plugin, change the dependency to:
 ```json
 "com.displayxr.unity": "file:/absolute/path/to/displayxr-unity"
 ```
 
-## Test Scenes
+## Test Scene
 
 | Scene | Description |
 |-------|-------------|
-| `Assets/CubeTest.unity` | Rotating cube on a tracked 3D display, plus a runtime-built window-space UI panel with IPD / virtual-display-height sliders and a render-mode cycle button. Verifies the basic rendering pipeline AND the `XrCompositionLayerWindowSpaceEXT` overlay path. |
+| `Assets/CubeTest.unity` | Rotating textured cube on a tracked 3D display + a runtime-built window-space UI panel: IPD slider, virtual-display-height slider, render-mode cycle button. Verifies basic rendering AND the `XrCompositionLayerWindowSpaceEXT` overlay path. |
 
 The window-space UI is constructed at runtime by `Assets/Scripts/DisplayXRTuningUI.cs` (programmatic Canvas + sliders + button — no hand-authored UI prefab). Adjust `panelX/panelY/panelWidth/panelHeight` on the `DisplayXR_TuningUI` GameObject to reposition the panel inside the runtime window.
+
+### Known limitation: read-only UI
+
+`XrCompositionLayerWindowSpaceEXT` submits pixels; it doesn't carry input.
+The plugin renders `DisplayXRWindowSpaceUI` content via a private WorldSpace
+canvas + dedicated camera, which is invisible to Unity's screen-space mouse
+raycasts — so sliders and buttons display correctly but **don't currently
+respond to clicks**. An input router that maps runtime-window mouse coords
+back to canvas-local events is tracked as a v1.2.10+ follow-up. For
+interactive UI today, render the canvas through your `DisplayXRDisplay` rig
+instead (LeiaInc-style); window-space layers are best for read-only HUDs.
 
 ## Running the Project
 
