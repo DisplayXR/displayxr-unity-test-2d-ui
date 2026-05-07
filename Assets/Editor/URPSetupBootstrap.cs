@@ -8,10 +8,12 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
 /// <summary>
-/// One-shot URP pipeline setup. Runs the first time the Editor loads this
-/// project — if no Universal Render Pipeline Asset is assigned, creates one
-/// with XR-friendly defaults (UpscalingFilter = Auto, no MSAA-quirks) and
-/// wires it into Project Settings → Graphics + Quality.
+/// Idempotent URP pipeline setup. Runs on every editor load and self-heals:
+/// - If no URP asset is assigned (fresh clone, deleted Assets/Settings,
+///   etc.), creates one with XR-friendly defaults and wires it into
+///   Project Settings → Graphics + Quality.
+/// - If a URP asset is already assigned, only patches UpscalingFilter to
+///   Auto if it drifted away from that. No-op otherwise.
 ///
 /// Why this exists: Unity 6's URP-converter wizard creates the URP asset in
 /// the Editor but its default UpscalingFilter sometimes lands on FSR/STP,
@@ -20,8 +22,13 @@ using UnityEngine.Rendering.Universal;
 /// by XR"). Pinning to Auto keeps OpenXR happy without sacrificing
 /// rendering quality.
 ///
-/// The script self-disables after the asset is created so it doesn't churn
-/// on every reload.
+/// Earlier versions used an EditorPrefs sentinel to run only once, but
+/// EditorPrefs are per-machine — once any clone of this project ran the
+/// bootstrap, every subsequent fresh clone on that machine skipped setup
+/// even though its `Assets/Settings/` was empty, leaving URP/Lit shaders
+/// unrendered. Dropping the sentinel and gating purely on observable state
+/// (`GraphicsSettings.defaultRenderPipeline`) makes the bootstrap survive
+/// re-clones, plugin reinstalls, and Library wipes.
 /// </summary>
 [InitializeOnLoad]
 internal static class URPSetupBootstrap
@@ -29,7 +36,6 @@ internal static class URPSetupBootstrap
     private const string kAssetDir = "Assets/Settings";
     private const string kPipelineAssetPath = "Assets/Settings/URP-Pipeline.asset";
     private const string kRendererAssetPath = "Assets/Settings/URP-Renderer.asset";
-    private const string kSentinelKey = "DisplayXRTest.URPSetupBootstrap.Done";
 
     static URPSetupBootstrap()
     {
@@ -41,10 +47,9 @@ internal static class URPSetupBootstrap
     private static void TrySetup()
     {
         EditorApplication.delayCall -= TrySetup;
-        if (EditorPrefs.GetBool(kSentinelKey, false)) return;
         if (GraphicsSettings.defaultRenderPipeline != null)
         {
-            // URP asset already assigned — just patch upscaling filter and call it done.
+            // URP asset already assigned — just patch upscaling filter if drifted.
             if (GraphicsSettings.defaultRenderPipeline is UniversalRenderPipelineAsset existing)
             {
                 if (existing.upscalingFilter != UpscalingFilterSelection.Auto)
@@ -55,7 +60,6 @@ internal static class URPSetupBootstrap
                     Debug.Log("[DisplayXRTest] URP UpscalingFilter set to Auto on existing pipeline asset.");
                 }
             }
-            EditorPrefs.SetBool(kSentinelKey, true);
             return;
         }
 
@@ -100,7 +104,6 @@ internal static class URPSetupBootstrap
 
         // Persist the project settings changes.
         AssetDatabase.SaveAssets();
-        EditorPrefs.SetBool(kSentinelKey, true);
         Debug.Log("[DisplayXRTest] URP pipeline asset created at " + kPipelineAssetPath +
                   " with UpscalingFilter=Auto and assigned to all quality levels.");
     }
