@@ -199,13 +199,19 @@ public class DisplayXRTuningUI : MonoBehaviour
             },
             out m_IpdSlider, out m_IpdValueText);
 
-        // ---- Scale (multiplier over initial vHeight) ----
-        if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight * kScaleDefault;
+        // ---- Scale (magnification — slider value DIVIDES the rig's vHeight) ----
+        // Smaller vHeight makes the scene appear larger (closer virtual
+        // display), so dividing by the slider value gives a "bigger when
+        // you slide right" interaction. Range stays 0.5..1.5 around 1.0:
+        //   slider 0.5 → vHeight × 2  → content shrinks
+        //   slider 1.0 → unchanged
+        //   slider 1.5 → vHeight × 0.667 → content grows
+        if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight / kScaleDefault;
         BuildSliderRow(panelGO.transform, "Scale",
             kScaleMin, kScaleMax, kScaleDefault,
             v =>
             {
-                if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight * v;
+                if (displayRig != null) displayRig.virtualDisplayHeight = m_InitialVHeight / v;
                 if (m_ScaleValueText != null) m_ScaleValueText.text = v.ToString("0.00") + "x";
             },
             out m_ScaleSlider, out m_ScaleValueText);
