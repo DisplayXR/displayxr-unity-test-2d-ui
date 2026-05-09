@@ -55,13 +55,13 @@ upgrade materials:
 
 ## Plugin Reference
 
-The project depends on the DisplayXR Unity plugin via Unity Package Manager. The dependency is declared in `Packages/manifest.json`:
+The project depends on the DisplayXR Unity plugin via Unity Package Manager. The dependency is declared in `Packages/manifest.json` and tracks the latest released plugin version (the `upm` branch is force-pushed by the plugin's CI on every `v*` tag, with the prebuilt native binary):
 
 ```json
-"com.displayxr.unity": "https://github.com/DisplayXR/displayxr-unity.git#upm/v1.2.13"
+"com.displayxr.unity": "https://github.com/DisplayXR/displayxr-unity.git#upm"
 ```
 
-To test against a different plugin version, edit the URL fragment (`#upm/v1.2.13`) to point at the desired tag, then run `Window → Package Manager → Refresh`.
+After editing, run `Window → Package Manager → Refresh`.
 
 To test against a local development build of the plugin, change the dependency to:
 ```json
