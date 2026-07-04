@@ -200,13 +200,21 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
     private bool TryGetWindowMouseFractional(out Vector2 frac)
     {
 #if UNITY_EDITOR
-        // Editor preview: the runtime owns its own NSWindow / HWND. Read the
-        // cursor from there.
-        if (DisplayXRPreviewInput.TryGetPreviewMousePosition(out float fx, out float fy))
+        // Provider editor Play Mode (#173): the woven output is a dedicated window,
+        // not Unity's Game View, so Unity's Input System doesn't track the cursor
+        // over it. Read the cursor from the overlay window (client px, top-left) and
+        // normalize by the overlay's client size to get fractional window coords.
+        try
         {
-            frac = new Vector2(fx, fy);
-            return true;
+            DisplayXRNative.displayxr_get_overlay_pointer(out int cx, out int cy, out int _);
+            DisplayXRNative.displayxr_get_overlay_size(out int ow, out int oh);
+            if (ow > 0 && oh > 0 && cx >= 0 && cy >= 0 && cx < ow && cy < oh)
+            {
+                frac = new Vector2((float)cx / ow, (float)cy / oh);
+                return true;
+            }
         }
+        catch (System.EntryPointNotFoundException) { /* old binary */ }
         frac = Vector2.zero;
         return false;
 #else
@@ -237,8 +245,15 @@ public class DisplayXRWsuiMouseRouter : MonoBehaviour
     private bool IsLeftDown()
     {
 #if UNITY_EDITOR
-        DisplayXRPreviewInput.GetPreviewMouseState(out int buttons, out int _);
-        return (buttons & 0x1) != 0;
+        // Provider editor Play Mode (#173): button state comes from the overlay
+        // window's native WndProc tracker (Unity's Input System doesn't see clicks
+        // over the separate weave window).
+        try
+        {
+            DisplayXRNative.displayxr_get_overlay_pointer(out int _, out int _, out int buttons);
+            return (buttons & 0x1) != 0;
+        }
+        catch (System.EntryPointNotFoundException) { return false; }
 #else
         var mouse = Mouse.current;
         return mouse != null && mouse.leftButton.isPressed;

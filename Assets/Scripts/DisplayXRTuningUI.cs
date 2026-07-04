@@ -1,7 +1,6 @@
 // Copyright 2024-2026, DisplayXR contributors
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Runtime.InteropServices;
 using DisplayXR;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -65,33 +64,9 @@ public class DisplayXRTuningUI : MonoBehaviour
     private Button m_ModeButton;
     private Font m_Font;
 
-    // Native rendering-mode access. We mirror the DllImports here so the
-    // test app can call them without depending on internals of the
-    // displayxr-unity package's DisplayXRNative class.
-    private const string kNativeLib = "displayxr_unity";
-    [DllImport(kNativeLib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int displayxr_standalone_enumerate_rendering_modes(
-        uint capacity, out uint count,
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] modeIndices,
-        System.IntPtr modeNames, // not used (would need fixed-byte buffer)
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] viewCounts,
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] tileColumns,
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] tileRows,
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] viewWidthPixels,
-        [Out, MarshalAs(UnmanagedType.LPArray)] uint[] viewHeightPixels,
-        [Out, MarshalAs(UnmanagedType.LPArray)] float[] viewScaleX,
-        [Out, MarshalAs(UnmanagedType.LPArray)] float[] viewScaleY,
-        [Out, MarshalAs(UnmanagedType.LPArray)] int[] hardwareDisplay3D);
-
-    [DllImport(kNativeLib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int displayxr_standalone_request_rendering_mode(uint modeIndex);
-
-    [DllImport(kNativeLib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int displayxr_standalone_get_rendering_mode_name(
-        uint arraySlot,
-        [MarshalAs(UnmanagedType.LPArray)] byte[] buffer,
-        uint bufferSize);
-
+    // Rendering-mode enumeration/selection now goes exclusively through the
+    // DisplayXRProvider facade (epic #166). The legacy standalone rendering-mode
+    // P/Invokes were removed with the OpenXR hook + standalone preview.
     private uint[] m_ModeIndices;
     private string[] m_ModeNames;
     private bool[] m_ModeIs3D;
@@ -104,7 +79,6 @@ public class DisplayXRTuningUI : MonoBehaviour
     // 2D<->3D sequencer (ported from displayxr-common, matches the runtime test apps).
     private readonly DisplayXR.DisplayXRModeSwitch m_ModeSwitch = new DisplayXR.DisplayXRModeSwitch();
     private bool m_ProviderMode;
-    private bool m_PrevVKb;   // edge-detect Keyboard.current 'V' in the built app
 
     void OnEnable()
     {
@@ -272,7 +246,6 @@ public class DisplayXRTuningUI : MonoBehaviour
         TryEnumerateModes();
     }
 
-    private bool m_PrevVPressed;
     private bool m_UIVisible = true;
     private GameObject m_CanvasGO;
 
@@ -303,24 +276,18 @@ public class DisplayXRTuningUI : MonoBehaviour
             if (fire && mode != DisplayXRProvider.ActiveModeIndex)
                 DisplayXRProvider.RequestRenderingMode(mode);
             SyncProviderModeLabel();
-
-            // Built-app V key via the Input System (reaches Unity through the provider
-            // focus hook). Edge-detected. The standalone preview-input V below is a
-            // no-op in a built player, so this is the active path here.
-            var kbV = Keyboard.current;
-            bool vKb = kbV != null && kbV.vKey.isPressed;
-            if (vKb && !m_PrevVKb) CycleRenderMode();
-            m_PrevVKb = vKb;
         }
 
         // V key cycles render modes — same action as the on-screen button.
-        // Polled via DisplayXRPreviewInput.IsKeyPressed which reads OS hardware
-        // state, so it works while the standalone preview NSWindow has focus
-        // (Unity's Input System only fires when Unity's editor or game view
-        // is focused). Edge-detected here so a held V doesn't spam-cycle.
-        bool vNow = DisplayXRPreviewInput.IsKeyPressed('V');
-        if (vNow && !m_PrevVPressed) CycleRenderMode();
-        m_PrevVPressed = vNow;
+        // Read via the new Input System (reaches Unity through the provider focus
+        // hook even while the woven output is in a separate window).
+        // wasPressedThisFrame is already edge-detected so a held V doesn't spam-cycle.
+#if ENABLE_INPUT_SYSTEM
+        bool vNow = Keyboard.current != null && Keyboard.current[Key.V].wasPressedThisFrame;
+#else
+        bool vNow = Input.GetKeyDown(KeyCode.V);
+#endif
+        if (vNow) CycleRenderMode();
 
         // Shift+Tab toggles UI visibility. Read directly from Unity's new
         // Input System — this only fires when Unity's editor or game view
@@ -340,76 +307,9 @@ public class DisplayXRTuningUI : MonoBehaviour
 
     void TryEnumerateModes()
     {
-        // Provider mode (built app): the standalone enumerate API is inert (no
-        // standalone session). Read the modes from DisplayXRProvider instead.
-        if (DisplayXRProviderDriver.IsActive)
-        {
-            TryEnumerateModesProvider();
-            return;
-        }
-
-        const uint kCapacity = 16;
-        try
-        {
-            uint[] indices = new uint[kCapacity];
-            uint[] viewCounts = new uint[kCapacity];
-            uint[] tileC = new uint[kCapacity];
-            uint[] tileR = new uint[kCapacity];
-            uint[] vw = new uint[kCapacity];
-            uint[] vh = new uint[kCapacity];
-            float[] sx = new float[kCapacity];
-            float[] sy = new float[kCapacity];
-            int[] hw3d = new int[kCapacity];
-            uint count = 0;
-            int ok = displayxr_standalone_enumerate_rendering_modes(
-                kCapacity, out count, indices, System.IntPtr.Zero,
-                viewCounts, tileC, tileR, vw, vh, sx, sy, hw3d);
-            if (ok == 0 || count == 0)
-                return;
-
-            m_ModeIndices = new uint[count];
-            m_ModeNames = new string[count];
-            m_ModeIs3D = new bool[count];
-            byte[] nameBuf = new byte[256];
-            for (int i = 0; i < count; i++)
-            {
-                m_ModeIndices[i] = indices[i];
-                m_ModeIs3D[i] = hw3d[i] != 0;
-
-                // Fetch the runtime-reported display name for this slot.
-                // Falls back to a synthesized label if the runtime returns
-                // empty (older runtime, or modes without a name string).
-                string name = null;
-                System.Array.Clear(nameBuf, 0, nameBuf.Length);
-                if (displayxr_standalone_get_rendering_mode_name((uint)i, nameBuf, (uint)nameBuf.Length) != 0)
-                {
-                    int len = 0;
-                    while (len < nameBuf.Length && nameBuf[len] != 0) len++;
-                    if (len > 0) name = System.Text.Encoding.UTF8.GetString(nameBuf, 0, len);
-                }
-                if (string.IsNullOrEmpty(name))
-                    name = SynthesizeModeName(indices[i], hw3d[i] != 0,
-                        tileC[i], tileR[i], viewCounts[i]);
-                m_ModeNames[i] = name;
-            }
-
-            // Default selection: first hw3d mode if any, else first. The
-            // runtime starts in its own default (typically mode 0, '2D'),
-            // so push a request_rendering_mode for the chosen slot so the
-            // visual output matches the label from the very first frame.
-            // The runtime caches the last requested mode across session
-            // restarts, so subsequent Play sessions in the same editor
-            // launch already start in the right mode regardless of this.
-            m_CurrentModeArrayIdx = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (m_ModeIs3D[i]) { m_CurrentModeArrayIdx = i; break; }
-            }
-            try { displayxr_standalone_request_rendering_mode(m_ModeIndices[m_CurrentModeArrayIdx]); }
-            catch (System.EntryPointNotFoundException) { }
-            UpdateModeLabel();
-        }
-        catch (System.EntryPointNotFoundException) { /* old plugin — ignore */ }
+        // Rendering modes come exclusively from the DisplayXRProvider facade
+        // (epic #166) now that the OpenXR hook + standalone preview are gone.
+        TryEnumerateModesProvider();
     }
 
     // Provider-mode enumeration: pull the mode list from DisplayXRProvider (the
@@ -488,16 +388,8 @@ public class DisplayXRTuningUI : MonoBehaviour
 
     void CycleRenderMode()
     {
-        if (m_ProviderMode) { CycleRenderModeProvider(); return; }
-
-        if (m_ModeIndices == null || m_ModeIndices.Length == 0) return;
-        m_CurrentModeArrayIdx = (m_CurrentModeArrayIdx + 1) % m_ModeIndices.Length;
-        try
-        {
-            displayxr_standalone_request_rendering_mode(m_ModeIndices[m_CurrentModeArrayIdx]);
-        }
-        catch (System.EntryPointNotFoundException) { }
-        UpdateModeLabel();
+        // Provider-only: hand the cycle to the shared smooth 2D<->3D sequencer.
+        CycleRenderModeProvider();
     }
 
     void UpdateModeLabel()
